@@ -1,11 +1,10 @@
 // ==UserScript==
 // @name         GitHub Repo Filter
-// @namespace    https://github.com/feveromo/scriptzoo
-// @version      1.0
+// @namespace    https://github.com/feveromo
+// @version      1.1
 // @description  Filters GitHub repositories by star count, hiding those with fewer than a specified number of stars.
 // @author       feveromo
 // @match        https://github.com/topics/*
-// @match        https://github.com/search*
 // @grant        GM_addStyle
 // ==/UserScript==
 
@@ -13,66 +12,144 @@
     'use strict';
 
     // Minimum number of stars to show.
-    const minStars = 5;
+    let minStars = 5;
 
     // Add debug panel styles
     GM_addStyle(`
+        /* Debug Panel */
         #debug-panel {
             position: fixed;
             bottom: 20px;
             right: 20px;
-            background: #fff;
-            border: 1px solid #ccc;
-            padding: 10px;
-            max-width: 300px;
+            background: var(--color-canvas-default, #fff);
+            border: 1px solid var(--color-border-default, #d0d7de);
+            border-radius: 6px;
+            padding: 12px;
+            max-width: 350px;
             max-height: 400px;
             overflow: auto;
             z-index: 9999;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            box-shadow: var(--color-shadow-medium, 0 8px 24px rgba(140,149,159,0.2));
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
         }
+
         .debug-entry {
-            margin-bottom: 5px;
+            margin-bottom: 8px;
             font-size: 12px;
+            color: var(--color-fg-default, #24292f);
+            line-height: 1.4;
         }
-        #debug-panel button {
-            margin-top: 5px;
-            padding: 3px 8px;
-            font-size: 12px;
-            background-color: #f0f0f0;
-            border: 1px solid #ccc;
-            border-radius: 3px;
-            cursor: pointer;
-            position: sticky;
-            top: 0;
-        }
-        #debug-panel button:hover {
-            background-color: #e0e0e0;
-        }
-        #toggle-debug {
+
+        /* Controls Container */
+        #controls-container {
             position: fixed;
             bottom: 20px;
             right: 20px;
+            display: flex;
+            gap: 8px;
             z-index: 10000;
         }
+
+        /* Common button/input styles */
+        .github-filter-btn {
+            padding: 5px 12px;
+            font-size: 12px;
+            font-weight: 500;
+            line-height: 20px;
+            color: var(--color-btn-text, #24292f);
+            background-color: var(--color-btn-bg, #f6f8fa);
+            border: 1px solid var(--color-btn-border, rgba(31,35,40,0.15));
+            border-radius: 6px;
+            box-shadow: var(--color-btn-shadow, 0 1px 0 rgba(31,35,40,0.04));
+            cursor: pointer;
+            transition: .2s cubic-bezier(0.3, 0, 0.5, 1);
+        }
+
+        .github-filter-btn:hover {
+            background-color: var(--color-btn-hover-bg, #f3f4f6);
+            border-color: var(--color-btn-hover-border, rgba(31,35,40,0.15));
+        }
+
+        /* Star Filter Controls */
+        #star-filter-controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--color-canvas-default, #fff);
+            padding: 6px 12px;
+            border: 1px solid var(--color-border-default, #d0d7de);
+            border-radius: 6px;
+            box-shadow: var(--color-shadow-medium, 0 8px 24px rgba(140,149,159,0.2));
+        }
+
+        #star-filter-controls label {
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--color-fg-default, #24292f);
+        }
+
+        #min-stars-input {
+            width: 70px;
+            padding: 3px 8px;
+            font-size: 12px;
+            border: 1px solid var(--color-border-default, #d0d7de);
+            border-radius: 4px;
+            color: var(--color-fg-default, #24292f);
+        }
+
+        #min-stars-input:focus {
+            border-color: var(--color-accent-fg, #0969da);
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(9,105,218,0.3);
+        }
+
         #debug-panel.hidden {
             display: none;
         }
     `);
 
+    // Create a container for all controls
+    const controlsContainer = document.createElement('div');
+    controlsContainer.id = 'controls-container';
+    document.body.appendChild(controlsContainer);
+
     // Create debug panel
     const debugPanel = document.createElement('div');
     debugPanel.id = 'debug-panel';
+    debugPanel.classList.add('hidden');
     document.body.appendChild(debugPanel);
+
+    // Create star filter controls
+    const starFilterControls = document.createElement('div');
+    starFilterControls.id = 'star-filter-controls';
+    starFilterControls.innerHTML = `
+        <label for="min-stars-input">Min Stars:</label>
+        <input type="number" id="min-stars-input" value="${minStars}" min="0">
+    `;
 
     // Create toggle button
     const toggleButton = document.createElement('button');
     toggleButton.id = 'toggle-debug';
+    toggleButton.className = 'github-filter-btn';
     toggleButton.textContent = 'Toggle Debug';
-    document.body.appendChild(toggleButton);
 
-    // Add event listener to toggle button
+    // Add controls to container in desired order
+    controlsContainer.appendChild(starFilterControls);
+    controlsContainer.appendChild(toggleButton);
+
+    // Add event listeners
     toggleButton.addEventListener('click', () => {
         debugPanel.classList.toggle('hidden');
+    });
+
+    const minStarsInput = document.getElementById('min-stars-input');
+    minStarsInput.addEventListener('change', () => {
+        const newValue = parseInt(minStarsInput.value, 10);
+        if (!isNaN(newValue) && newValue >= 0) {
+            minStars = newValue;
+            debugLog(`Updated minimum stars to: ${minStars}`);
+            debouncedFilter(); // Re-run the filter with new value
+        }
     });
 
     function debugLog(message, category = 'INFO') {

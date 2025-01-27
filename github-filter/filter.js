@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GitHub Repo Filter
 // @namespace    https://github.com/feveromo
-// @version      1.1
+// @version      1.2
 // @description  Filters GitHub repositories by star count, hiding those with fewer than a specified number of stars.
 // @author       feveromo
 // @match        https://github.com/topics/*
@@ -11,8 +11,9 @@
 (function() {
     'use strict';
 
-    // Minimum number of stars to show.
-    let minStars = 5;
+    // Minimum and maximum number of stars to show.
+    let minStars = 20;
+    let maxStars = 5000;
 
     // Add debug panel styles
     GM_addStyle(`
@@ -40,14 +41,27 @@
             line-height: 1.4;
         }
 
-        /* Controls Container */
+        /* Updated Controls Container */
         #controls-container {
             position: fixed;
             bottom: 20px;
             right: 20px;
             display: flex;
+            flex-direction: column;
             gap: 8px;
             z-index: 10000;
+        }
+
+        /* Filter group styling */
+        .filter-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--color-canvas-default, #fff);
+            padding: 6px 12px;
+            border: 1px solid var(--color-border-default, #d0d7de);
+            border-radius: 6px;
+            box-shadow: var(--color-shadow-medium, 0 8px 24px rgba(140,149,159,0.2));
         }
 
         /* Common button/input styles */
@@ -71,24 +85,14 @@
         }
 
         /* Star Filter Controls */
-        #star-filter-controls {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            background: var(--color-canvas-default, #fff);
-            padding: 6px 12px;
-            border: 1px solid var(--color-border-default, #d0d7de);
-            border-radius: 6px;
-            box-shadow: var(--color-shadow-medium, 0 8px 24px rgba(140,149,159,0.2));
-        }
-
         #star-filter-controls label {
             font-size: 12px;
             font-weight: 500;
             color: var(--color-fg-default, #24292f);
         }
 
-        #min-stars-input {
+        /* Updated input styles to use class */
+        .star-filter-input {
             width: 70px;
             padding: 3px 8px;
             font-size: 12px;
@@ -97,7 +101,7 @@
             color: var(--color-fg-default, #24292f);
         }
 
-        #min-stars-input:focus {
+        .star-filter-input:focus {
             border-color: var(--color-accent-fg, #0969da);
             outline: none;
             box-shadow: 0 0 0 3px rgba(9,105,218,0.3);
@@ -123,8 +127,14 @@
     const starFilterControls = document.createElement('div');
     starFilterControls.id = 'star-filter-controls';
     starFilterControls.innerHTML = `
-        <label for="min-stars-input">Min Stars:</label>
-        <input type="number" id="min-stars-input" value="${minStars}" min="0">
+        <div class="filter-group">
+            <label for="max-stars-input">Max Stars:</label>
+            <input type="number" id="max-stars-input" class="star-filter-input" value="${maxStars}" min="0">
+        </div>
+        <div class="filter-group">
+            <label for="min-stars-input">Min Stars:</label>
+            <input type="number" id="min-stars-input" class="star-filter-input" value="${minStars}" min="0">
+        </div>
     `;
 
     // Create toggle button
@@ -149,6 +159,16 @@
             minStars = newValue;
             debugLog(`Updated minimum stars to: ${minStars}`);
             debouncedFilter(); // Re-run the filter with new value
+        }
+    });
+
+    const maxStarsInput = document.getElementById('max-stars-input');
+    maxStarsInput.addEventListener('change', () => {
+        const newValue = parseInt(maxStarsInput.value, 10);
+        if (!isNaN(newValue) && newValue >= 0) {
+            maxStars = newValue;
+            debugLog(`Updated maximum stars to: ${maxStars}`);
+            debouncedFilter();
         }
     });
 
@@ -496,7 +516,7 @@
                 debugLog(`Repo ${index + 1}: "${starCountText}" → ${starCount} stars`);
                 debugLog(`Repository ${index + 1}: "${starCountText}" parsed to ${starCount} stars`, 'DEBUG');
 
-                if (starCount < minStars) {
+                if (starCount < minStars || (maxStars > 0 && starCount > maxStars)) {
                     repoItem.style.display = 'none';
                     hiddenCount++;
                 } else {
